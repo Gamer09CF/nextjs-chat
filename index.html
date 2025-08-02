@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FireChat</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Socket.IO client library -->
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <!-- UUID library for unique user IDs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuidv4.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #3f3f3f;
+        }
+        .panel-bg {
+            background-color: #2f2f2f;
+        }
+        .request-item:hover, .message-item:hover {
+            background-color: #3b3b3b;
+        }
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.75);
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        /* Style the scrollbars */
+        .overflow-y-auto::-webkit-scrollbar {
+            width: 8px;
+        }
+        .overflow-y-auto::-webkit-scrollbar-thumb {
+            background-color: #4b5563; /* Gray-600 */
+            border-radius: 4px;
+        }
+        .overflow-y-auto::-webkit-scrollbar-track {
+            background-color: #1f2937; /* Gray-800 */
+        }
+    </style>
+</head>
+<body class="text-gray-100 flex items-center justify-center min-h-screen p-4">
+
+    <!-- Custom message box for alerts -->
+    <div id="custom-message-box" class="hidden modal-overlay">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl border border-gray-700 w-full max-w-sm">
+            <h3 class="text-xl font-bold mb-4 text-white">Alert</h3>
+            <p id="message-text" class="text-gray-300 mb-6"></p>
+            <div class="flex justify-end">
+                <button id="close-message-box" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition duration-200">
+                    OK
+                </button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Feature Request Modal -->
+    <div id="feature-request-modal" class="hidden modal-overlay">
+        <div class="bg-gray-800 p-6 rounded-lg shadow-xl border border-gray-700 w-full max-w-lg">
+            <h3 class="text-xl font-bold mb-4 text-white">Submit a Feature Request</h3>
+            <textarea id="feature-request-input" rows="4" placeholder="Describe the feature you would like to see..." class="w-full p-3 rounded-lg border border-gray-600 bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 text-white mb-4"></textarea>
+            <div class="flex justify-end space-x-2">
+                <button id="cancel-request-button" class="px-4 py-2 bg-gray-600 text-white font-semibold rounded-lg hover:bg-gray-700 transition duration-200">
+                    Cancel
+                </button>
+                <button id="submit-request-button" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-lg hover:bg-green-700 transition duration-200">
+                    Submit
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Login Modal -->
+    <div id="name-modal" class="modal-overlay">
+        <div class="panel-bg rounded-xl shadow-2xl p-6 w-full max-w-sm relative">
+            <h1 class="text-3xl font-extrabold text-center mb-4 text-white">FireChat</h1>
+            
+            <p class="text-gray-300 text-center mb-4">Please enter your username to join.</p>
+            <input type="text" id="username-input" placeholder="Choose a username..." class="w-full p-3 rounded-lg border border-gray-600 bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 text-white mb-2" autocomplete="off">
+            <button id="join-chat-button" class="w-full p-3 text-white font-bold rounded-lg bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-200">
+                Join Chat
+            </button>
+            
+            <div class="flex items-center justify-between my-4">
+                <hr class="flex-grow border-gray-600">
+                <span class="px-3 text-gray-400 font-bold">OR</span>
+                <hr class="flex-grow border-gray-600">
+            </div>
+
+            <p class="text-gray-300 text-center mb-2">Admin Login</p>
+            <input type="password" id="admin-password-input" placeholder="Admin Password" class="w-full p-3 rounded-lg border border-gray-600 bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 text-white mb-2" autocomplete="off">
+            <button id="admin-login-button" class="w-full p-3 text-white font-bold rounded-lg bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50 transition duration-200">
+                Admin Login
+            </button>
+        </div>
+    </div>
+
+    <!-- User Chat Panel -->
+    <div id="user-chat-panel" class="panel-bg hidden w-full h-[90vh] max-w-4xl mx-auto p-6 rounded-xl shadow-2xl grid grid-cols-1 md:grid-cols-3 gap-6">
+
+        <!-- Left Sidebar: Connected Users & Admin Login -->
+        <div class="col-span-1 flex flex-col space-y-6">
+            <div class="flex items-center justify-between">
+                <h2 class="text-xl font-bold">Connected Users</h2>
+                <button id="admin-panel-toggle-btn" class="hidden px-3 py-1 text-white text-sm font-bold rounded-lg bg-red-600 hover:bg-red-700 transition duration-200">
+                    Admin Panel
+                </button>
+            </div>
+            
+            <div id="users-list" class="panel-bg flex-grow overflow-y-auto p-2 rounded-xl border border-gray-600">
+                <!-- Connected users will be injected here -->
+            </div>
+            
+            <div class="flex-grow"></div> <!-- Spacer to push elements to the bottom -->
+
+            <!-- User Actions Section -->
+            <div class="flex flex-col space-y-2">
+                <div class="flex items-center justify-between">
+                    <span id="current-user" class="text-sm font-medium text-gray-400"></span>
+                    <button id="feature-request-button" class="px-3 py-1 text-white text-sm font-bold rounded-lg bg-blue-600 hover:bg-blue-700 transition duration-200">
+                        Feature Request
+                    </button>
+                </div>
+                <div class="flex justify-end">
+                    <button id="leave-button" class="px-3 py-1 text-white text-sm font-bold rounded-lg bg-red-600 hover:bg-red-700 transition duration-200">
+                        Leave Chat
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Chat Display and Input -->
+        <div class="col-span-1 md:col-span-2 flex flex-col">
+            <h1 class="text-2xl font-extrabold mb-4">FireChat</h1>
+            <!-- Chat messages container -->
+            <div id="chat-container" class="panel-bg flex-grow overflow-y-auto p-4 rounded-xl border border-gray-600 mb-4">
+                <!-- Messages will be injected here -->
+            </div>
+            <!-- Message input form -->
+            <form id="message-form" class="flex items-center space-x-2">
+                <input type="text" id="message-input" placeholder="Type a message..." class="flex-grow p-3 rounded-lg border border-gray-600 bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 text-white" autocomplete="off">
+                <button type="button" id="send-button" class="p-3 text-white font-bold rounded-lg bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-200">
+                    Send
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Moderator Panel -->
+    <div id="moderator-panel" class="panel-bg hidden w-full h-[90vh] max-w-4xl mx-auto p-6 rounded-xl shadow-2xl grid grid-cols-1 md:grid-cols-2 gap-6">
+
+        <!-- Left Column: User and Ban Controls -->
+        <div id="mod-control-panel" class="col-span-1 flex flex-col space-y-4">
+            <div class="flex items-center justify-between">
+                <h1 class="text-2xl font-extrabold">Moderator Panel</h1>
+                <div class="flex items-center space-x-2">
+                    <button id="admin-chat-toggle-btn" class="px-3 py-1 text-white text-sm font-bold rounded-lg bg-blue-600 hover:bg-blue-700 transition duration-200">
+                        Admin Chat
+                    </button>
+                    <span id="mod-logged-in-as" class="text-sm font-medium text-gray-400"></span>
+                    <button id="mod-leave-button" class="px-3 py-1 text-white text-sm font-bold rounded-lg bg-red-600 hover:bg-red-700 transition duration-200">
+                        Logout
+                    </button>
+                </div>
+            </div>
+            
+            <div class="flex flex-col flex-grow">
+                <h3 class="text-lg font-semibold text-gray-300">Connected Users</h3>
+                <div id="mod-connected-users-list" class="panel-bg overflow-y-auto p-2 rounded-xl border border-gray-600 mb-4 h-1/2">
+                    <!-- Connected users with Ban button -->
+                </div>
+                <h3 class="text-lg font-semibold text-gray-300">Banned Users</h3>
+                <div id="mod-banned-users-list" class="panel-bg overflow-y-auto p-2 rounded-xl border border-gray-600 h-1/2">
+                    <!-- Banned users with Unban button -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Feature Requests Inbox -->
+        <div class="col-span-1 flex flex-col" id="mod-feature-requests-panel">
+            <h2 class="text-2xl font-extrabold text-white mb-4">Feature Requests Inbox</h2>
+            <div id="mod-feature-requests-list" class="panel-bg flex-grow overflow-y-auto p-4 rounded-xl border border-gray-600">
+                <!-- Feature requests will be injected here -->
+            </div>
+        </div>
+
+        <!-- Admin Chat Panel -->
+        <div id="admin-chat-panel" class="col-span-2 flex flex-col hidden">
+            <div class="flex items-center justify-between mb-4">
+                <h1 class="text-2xl font-extrabold text-white">Admin Chat</h1>
+                <div class="flex items-center space-x-2">
+                    <button id="admin-back-to-mod-panel" class="px-3 py-1 text-white text-sm font-bold rounded-lg bg-blue-600 hover:bg-blue-700 transition duration-200">
+                        Back to Moderator Panel
+                    </button>
+                    <button id="admin-chat-leave-button" class="px-3 py-1 text-white text-sm font-bold rounded-lg bg-red-600 hover:bg-red-700 transition duration-200">
+                        Logout
+                    </button>
+                </div>
+            </div>
+            <div id="admin-chat-container" class="panel-bg flex-grow overflow-y-auto p-4 rounded-xl border border-gray-600 mb-4">
+                <!-- Admin chat messages will be injected here -->
+            </div>
+            <form id="admin-message-form" class="flex items-center space-x-2">
+                <input type="text" id="admin-message-input" placeholder="Type a message as ADMIN..." class="flex-grow p-3 rounded-lg border border-gray-600 bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition duration-200 text-white" autocomplete="off">
+                <button type="button" id="admin-send-button" class="p-3 text-white font-bold rounded-lg bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition duration-200">
+                    Send
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Configuration ---
+            // IMPORTANT: Replace this URL with your deployed Node.js WebSocket server URL.
+            // For example: "https://my-chat-server.onrender.com"
+            const SOCKET_URL = "http://localhost:8080";
+            const ADMIN_PASSWORD = "admin"; // Hardcoded for this example. Do not use in production.
+
+            // --- UI Elements ---
+            const nameModal = document.getElementById('name-modal');
+            const usernameInput = document.getElementById('username-input');
+            const joinChatButton = document.getElementById('join-chat-button');
+            const adminPasswordInput = document.getElementById('admin-password-input');
+            const adminLoginButton = document.getElementById('admin-login-button');
+
+            const userChatPanel = document.getElementById('user-chat-panel');
+            const moderatorPanel = document.getElementById('moderator-panel');
+            const adminChatPanel = document.getElementById('admin-chat-panel');
+
+            const currentUserSpan = document.getElementById('current-user');
+            const modLoggedInAsSpan = document.getElementById('mod-logged-in-as');
+            const leaveButton = document.getElementById('leave-button');
+            const modLeaveButton = document.getElementById('mod-leave-button');
+            const adminChatLeaveButton = document.getElementById('admin-chat-leave-button');
+
+            const messageForm = document.getElementById('message-form');
+            const messageInput = document.getElementById('message-input');
+            const chatContainer = document.getElementById('chat-container');
+
+            const adminMessageForm = document.getElementById('admin-message-form');
+            const adminMessageInput = document.getElementById('admin-message-input');
+            const adminChatContainer = document.getElementById('admin-chat-container');
+            
+            const usersList = document.getElementById('users-list');
+            const modConnectedUsersList = document.getElementById('mod-connected-users-list');
+            const modBannedUsersList = document.getElementById('mod-banned-users-list');
+            const modFeatureRequestsList = document.getElementById('mod-feature-requests-list');
+
+            const adminPanelToggleBtn = document.getElementById('admin-panel-toggle-btn');
+            const adminChatToggleBtn = document.getElementById('admin-chat-toggle-btn');
+            const adminBackToModPanelBtn = document.getElementById('admin-back-to-mod-panel');
+            const featureRequestButton = document.getElementById('feature-request-button');
+            const featureRequestModal = document.getElementById('feature-request-modal');
+            const cancelRequestButton = document.getElementById('cancel-request-button');
+            const submitRequestButton = document.getElementById('submit-request-button');
+            const featureRequestInput = document.getElementById('feature-request-input');
+
+            const customMessageBox = document.getElementById('custom-message-box');
+            const messageText = document.getElementById('message-text');
+            const closeMessageBox = document.getElementById('close-message-box');
+
+            // --- State Variables ---
+            let socket = null;
+            let username = '';
+            let userId = '';
+            let isModerator = false;
+            const userColors = {};
+            const featureRequests = [];
+
+            // --- Utility Functions ---
+            const showMessageBox = (text) => {
+                messageText.textContent = text;
+                customMessageBox.classList.remove('hidden');
+            };
+
+            closeMessageBox.addEventListener('click', () => {
+                customMessageBox.classList.add('hidden');
+            });
+
+            const getUserColor = (id) => {
+                if (!userColors[id]) {
+                    const colors = ['#f43f5e', '#ec4899', '#a855f7', '#6366f1', '#3b82f6', '#0ea5e9', '#06b6d4', '#14b8a6', '#22c55e', '#84cc16'];
+                    const colorIndex = Object.keys(userColors).length % colors.length;
+                    userColors[id] = colors[colorIndex];
+                }
+                return userColors[id];
+            };
+
+            const renderMessage = (msg, container) => {
+                const isUserMessage = msg.username === username;
+                const messageElement = document.createElement('div');
+                messageElement.className = `flex flex-col ${isUserMessage ? 'items-end' : 'items-start'}`;
+
+                messageElement.innerHTML = `
+                    <div class="flex items-center space-x-2 ${isUserMessage ? 'flex-row-reverse space-x-reverse' : ''}">
+                        <div class="h-8 w-8 rounded-full flex items-center justify-center text-white font-bold" style="background-color: ${getUserColor(msg.username)}">
+                            ${msg.username.charAt(0)}
+                        </div>
+                        <div class="flex flex-col max-w-xs md:max-w-md">
+                            <div class="flex justify-between items-baseline">
+                                <span class="text-xs font-semibold text-gray-400">
+                                    ${isUserMessage ? 'You' : msg.username}
+                                </span>
+                                <span class="text-xs text-gray-500 ml-2">${msg.timestamp}</span>
+                            </div>
+                            <div class="p-3 rounded-xl shadow-md mt-1 ${isUserMessage ? 'bg-blue-500 text-white' : 'bg-gray-600 text-gray-100'}">
+                                ${msg.text}
+                            </div>
+                        </div>
+                    </div>
+                `;
+                container.appendChild(messageElement);
+                container.scrollTop = container.scrollHeight;
+            };
+
+            const togglePanel = (panelName) => {
+                userChatPanel.classList.add('hidden');
+                moderatorPanel.classList.add('hidden');
+                adminChatPanel.classList.add('hidden');
+
+                if (panelName === 'user-chat') {
+                    userChatPanel.classList.remove('hidden');
+                } else if (panelName === 'mod') {
+                    moderatorPanel.classList.remove('hidden');
+                    document.getElementById('mod-control-panel').classList.remove('hidden');
+                    document.getElementById('mod-feature-requests-panel').classList.remove('hidden');
+                } else if (panelName === 'admin-chat') {
+                    moderatorPanel.classList.remove('hidden');
+                    adminChatPanel.classList.remove('hidden');
+                    document.getElementById('mod-control-panel').classList.add('hidden');
+                    document.getElementById('mod-feature-requests-panel').classList.add('hidden');
+                }
+            };
+
+            // Updates the list of connected users
+            const updateUsersList = (users) => {
+                usersList.innerHTML = '';
+                modConnectedUsersList.innerHTML = '';
+                
+                users.forEach(user => {
+                    const userDiv = document.createElement('div');
+                    userDiv.className = 'flex items-center p-2 space-x-2 rounded-lg';
+                    userDiv.innerHTML = `
+                        <div class="h-6 w-6 rounded-full flex items-center justify-center text-white text-sm font-bold" style="background-color: ${getUserColor(user.id)}">
+                            ${user.username.charAt(0)}
+                        </div>
+                        <span class="text-sm text-gray-200">${user.username}</span>
+                    `;
+                    usersList.appendChild(userDiv);
+
+                    // Add to mod list if isModerator is true
+                    if (isModerator) {
+                        const modUserDiv = document.createElement('div');
+                        modUserDiv.className = 'flex items-center justify-between p-2 rounded-lg hover:bg-gray-700 transition duration-200';
+                        modUserDiv.innerHTML = `
+                            <div class="flex items-center space-x-2">
+                                <div class="h-6 w-6 rounded-full flex items-center justify-center text-white text-sm font-bold" style="background-color: ${getUserColor(user.id)}">
+                                    ${user.username.charAt(0)}
+                                </div>
+                                <span class="text-sm text-gray-200">${user.username}</span>
+                            </div>
+                            <button data-user-id="${user.id}" class="ban-user-btn px-2 py-1 text-xs text-white rounded-md bg-red-600 hover:bg-red-700 transition duration-200">
+                                Ban
+                            </button>
+                        `;
+                        modConnectedUsersList.appendChild(modUserDiv);
+                    }
+                });
+
+                if (users.length === 0) {
+                    usersList.innerHTML = '<p class="text-sm text-gray-400 p-2">No one is connected.</p>';
+                    if (isModerator) {
+                        modConnectedUsersList.innerHTML = '<p class="text-sm text-gray-400 p-2">No one is connected.</p>';
+                    }
+                }
+            };
+            
+            const updateBannedUsersList = (bannedUsers) => {
+                modBannedUsersList.innerHTML = '';
+                if (bannedUsers.length === 0) {
+                    modBannedUsersList.innerHTML = '<p class="text-sm text-gray-400 p-2">No users are banned.</p>';
+                } else {
+                    bannedUsers.forEach(user => {
+                        const userDiv = document.createElement('div');
+                        userDiv.className = 'flex items-center justify-between p-2 rounded-lg hover:bg-gray-700 transition duration-200';
+                        userDiv.innerHTML = `
+                            <div class="flex items-center space-x-2">
+                                <div class="h-6 w-6 rounded-full flex items-center justify-center text-white text-sm font-bold" style="background-color: ${getUserColor(user.id)}">
+                                    ${user.username.charAt(0)}
+                                </div>
+                                <span class="text-sm text-gray-200">${user.username}</span>
+                            </div>
+                            <button data-user-id="${user.id}" class="unban-user-btn px-2 py-1 text-xs text-white rounded-md bg-green-600 hover:bg-green-700 transition duration-200">
+                                Unban
+                            </button>
+                        `;
+                        modBannedUsersList.appendChild(userDiv);
+                    });
+                }
+            };
+
+            const updateFeatureRequestsList = (requests) => {
+                modFeatureRequestsList.innerHTML = '';
+                if (requests.length === 0) {
+                    modFeatureRequestsList.innerHTML = '<p class="text-sm text-gray-400">No new feature requests.</p>';
+                } else {
+                    requests.forEach((request, index) => {
+                        const requestDiv = document.createElement('div');
+                        requestDiv.className = 'p-3 rounded-lg bg-gray-700 mb-2 hover:bg-gray-600 transition duration-200 flex items-start space-x-2';
+                        requestDiv.innerHTML = `
+                            <span class="text-gray-400 text-sm font-semibold">${request.username}:</span>
+                            <span class="text-gray-300 text-sm flex-grow">${request.text}</span>
+                            <button data-index="${index}" class="delete-request-btn text-gray-400 hover:text-red-500 transition-colors duration-200">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                            </button>
+                        `;
+                        modFeatureRequestsList.appendChild(requestDiv);
+                    });
+                }
+            };
+
+            // --- WebSocket Connection and Events ---
+            const connectToServer = (isMod, name) => {
+                socket = io(SOCKET_URL);
+                isModerator = isMod;
+                username = name;
+                userId = uuidv4();
+                
+                nameModal.classList.add('hidden');
+                if (isModerator) {
+                    togglePanel('mod');
+                    modLoggedInAsSpan.textContent = `Logged in as: ${username}`;
+                    adminPanelToggleBtn.classList.remove('hidden');
+                } else {
+                    togglePanel('user-chat');
+                    currentUserSpan.textContent = `Logged in as: ${username}`;
+                }
+                
+                socket.on('connect', () => {
+                    console.log('Connected to server with ID:', socket.id);
+                    socket.emit('userJoined', { id: userId, username: username, isModerator: isModerator });
+                    messageInput.placeholder = "Type your message...";
+                    messageInput.disabled = false;
+                });
+                
+                socket.on('message', (message) => {
+                    renderMessage(message, chatContainer);
+                });
+
+                socket.on('adminMessage', (message) => {
+                    if (isModerator) {
+                        renderMessage(message, adminChatContainer);
+                    }
+                });
+
+                socket.on('userList', (users) => {
+                    updateUsersList(users);
+                });
+
+                socket.on('bannedUsersList', (bannedUsers) => {
+                    updateBannedUsersList(bannedUsers);
+                });
+
+                socket.on('featureRequestsList', (requests) => {
+                    if (isModerator) {
+                        featureRequests.length = 0;
+                        featureRequests.push(...requests);
+                        updateFeatureRequestsList(requests);
+                    }
+                });
+
+                socket.on('disconnect', () => {
+                    console.log('Disconnected from server');
+                    messageInput.placeholder = "Disconnected. Refresh to reconnect.";
+                    messageInput.disabled = true;
+                    togglePanel('none');
+                    nameModal.classList.remove('hidden');
+                });
+            };
+
+            // --- Event Listeners for UI interaction and forms ---
+            joinChatButton.addEventListener('click', () => {
+                const name = usernameInput.value.trim();
+                if (name) {
+                    connectToServer(false, name);
+                } else {
+                    showMessageBox('Please enter a valid username.');
+                }
+            });
+
+            adminLoginButton.addEventListener('click', () => {
+                const password = adminPasswordInput.value.trim();
+                if (password === ADMIN_PASSWORD) {
+                    const name = "Admin";
+                    connectToServer(true, name);
+                } else {
+                    showMessageBox('Invalid admin password.');
+                }
+            });
+
+            const leaveChat = () => {
+                if (socket) {
+                    socket.disconnect();
+                }
+            };
+            leaveButton.addEventListener('click', leaveChat);
+            modLeaveButton.addEventListener('click', leaveChat);
+            adminChatLeaveButton.addEventListener('click', leaveChat);
+
+            messageForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const messageText = messageInput.value.trim();
+                if (messageText && socket && socket.connected) {
+                    const chatMessage = {
+                        id: uuidv4(),
+                        text: messageText,
+                        username: username,
+                        timestamp: new Date().toLocaleTimeString(),
+                    };
+                    socket.emit('message', chatMessage);
+                    messageInput.value = '';
+                }
+            });
+            
+            adminMessageForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const messageText = adminMessageInput.value.trim();
+                if (messageText && socket && socket.connected) {
+                    const adminMessage = {
+                        id: uuidv4(),
+                        text: messageText,
+                        username: username,
+                        timestamp: new Date().toLocaleTimeString(),
+                    };
+                    socket.emit('adminMessage', adminMessage);
+                    adminMessageInput.value = '';
+                }
+            });
+
+            // Moderator panel toggle buttons
+            adminPanelToggleBtn.addEventListener('click', () => togglePanel('mod'));
+            adminChatToggleBtn.addEventListener('click', () => togglePanel('admin-chat'));
+            adminBackToModPanelBtn.addEventListener('click', () => togglePanel('mod'));
+
+            // Feature request modal buttons
+            featureRequestButton.addEventListener('click', () => {
+                featureRequestModal.classList.remove('hidden');
+            });
+            cancelRequestButton.addEventListener('click', () => {
+                featureRequestModal.classList.add('hidden');
+                featureRequestInput.value = '';
+            });
+            submitRequestButton.addEventListener('click', () => {
+                const requestText = featureRequestInput.value.trim();
+                if (requestText) {
+                    if (socket && socket.connected) {
+                        const request = {
+                            id: uuidv4(),
+                            text: requestText,
+                            username: username,
+                            timestamp: new Date().toLocaleTimeString(),
+                        };
+                        socket.emit('featureRequest', request);
+                        featureRequestModal.classList.add('hidden');
+                        featureRequestInput.value = '';
+                        showMessageBox('Your feature request has been submitted!');
+                    } else {
+                        showMessageBox('Connection lost. Please reconnect and try again.');
+                    }
+                } else {
+                    showMessageBox('Please enter a description for your feature request.');
+                }
+            });
+
+            // Add event listener for dynamic ban/unban buttons (event delegation)
+            moderatorPanel.addEventListener('click', (e) => {
+                if (e.target.classList.contains('ban-user-btn')) {
+                    const userIdToBan = e.target.getAttribute('data-user-id');
+                    if (userIdToBan) {
+                        socket.emit('banUser', { userId: userIdToBan });
+                        showMessageBox(`User with ID ${userIdToBan} has been banned.`);
+                    }
+                }
+                if (e.target.classList.contains('unban-user-btn')) {
+                    const userIdToUnban = e.target.getAttribute('data-user-id');
+                    if (userIdToUnban) {
+                         socket.emit('unbanUser', { userId: userIdToUnban });
+                        showMessageBox(`User with ID ${userIdToUnban} has been unbanned.`);
+                    }
+                }
+                if (e.target.closest('.delete-request-btn')) {
+                    const index = e.target.closest('.delete-request-btn').getAttribute('data-index');
+                    if (index !== null) {
+                        const requestIdToDelete = featureRequests[index].id;
+                        socket.emit('deleteFeatureRequest', { requestId: requestIdToDelete });
+                        showMessageBox('Feature request deleted.');
+                    }
+                }
+            });
+        });
+    </script>
+</body>
+</html>
