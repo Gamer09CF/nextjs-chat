@@ -23,7 +23,7 @@ const io = new Server(server, {
 let connectedUsers = [];
 let bannedUsers = [];
 let featureRequests = [];
-const adminPassword = "admin"; // A simple password for demonstration
+const adminPassword = "toorroot123"; // A simple password for demonstration
 
 // Serve the HTML file from the same directory
 app.get('/', (req, res) => {
@@ -146,5 +146,5 @@ io.on('connection', (socket) => {
 // Start the server
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
-    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`Server is running on https://nextjs-chat-xvnd.onrender.com:${PORT}`);
 });
